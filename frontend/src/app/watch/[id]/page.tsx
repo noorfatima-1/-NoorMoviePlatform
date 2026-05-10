@@ -46,7 +46,8 @@ export default function WatchPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (id) fetchMovieById(id as string);
+    // Use light mode - skip similar movies fetch for faster loading
+    if (id) fetchMovieById(id as string, true);
   }, [id, fetchMovieById]);
 
   // Auto-hide controls

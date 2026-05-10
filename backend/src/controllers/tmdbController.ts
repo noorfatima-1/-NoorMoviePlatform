@@ -54,8 +54,11 @@ export const getPopular = async (req: Request, res: Response): Promise<void> => 
 export const getMovieDetails = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const movie = await tmdb.getMovieDetails(id);
-    const similar = await tmdb.getSimilar(id);
+    const skipSimilar = req.query.light === 'true';
+    const [movie, similar] = await Promise.all([
+      tmdb.getMovieDetails(id),
+      skipSimilar ? Promise.resolve([]) : tmdb.getSimilar(id),
+    ]);
     res.json({ success: true, data: { ...movie, similar } });
   } catch {
     res.status(500).json({ success: false, error: 'Failed to fetch movie details' });

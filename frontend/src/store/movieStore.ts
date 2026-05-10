@@ -19,7 +19,7 @@ interface MovieState {
   fetchTopRated: () => Promise<void>;
   fetchUpcoming: () => Promise<void>;
   fetchPopular: () => Promise<void>;
-  fetchMovieById: (id: string) => Promise<void>;
+  fetchMovieById: (id: string, light?: boolean) => Promise<void>;
   fetchByGenre: (genre: string) => Promise<Movie[]>;
   searchMovies: (query: string) => Promise<void>;
   setSearchQuery: (query: string) => void;
@@ -86,13 +86,13 @@ export const useMovieStore = create<MovieState>((set) => ({
     } catch { /* silent */ }
   },
 
-  fetchMovieById: async (id) => {
+  fetchMovieById: async (id, light = false) => {
     set({ isLoading: true });
     try {
-      // Check if it's a TMDB movie
       if (id.startsWith('tmdb-')) {
         const tmdbId = id.replace('tmdb-', '');
-        const res = await api.get<ApiResponse<Movie & { similar?: Movie[] }>>(`/tmdb/${tmdbId}`);
+        const query = light ? '?light=true' : '';
+        const res = await api.get<ApiResponse<Movie & { similar?: Movie[] }>>(`/tmdb/${tmdbId}${query}`);
         set({ currentMovie: res.data, isLoading: false });
       } else {
         const res = await api.get<ApiResponse<Movie>>(`/movies/${id}`);
