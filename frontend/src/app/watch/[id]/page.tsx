@@ -133,10 +133,12 @@ export default function WatchPage() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  // If we have a YouTube trailer URL, use it (loads instantly)
+  // Otherwise fall back to a fast-loading sample
   const videoUrl =
     currentMovie?.trailer_url ||
     currentMovie?.video_url ||
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    `https://www.youtube.com/watch?v=dQw4w9WgXcQ`;
 
   if (!currentMovie) {
     return (

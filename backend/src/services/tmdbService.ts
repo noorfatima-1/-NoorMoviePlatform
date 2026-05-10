@@ -63,9 +63,13 @@ function transformMovie(movie: TMDBMovie) {
     description: movie.overview,
     poster_url: movie.poster_path ? `${IMG_BASE}/w500${movie.poster_path}` : '',
     backdrop_url: movie.backdrop_path ? `${IMG_BASE}/original${movie.backdrop_path}` : '',
-    trailer_url: movie.videos?.results?.find((v) => v.site === 'YouTube' && v.type === 'Trailer')
-      ? `https://www.youtube.com/watch?v=${movie.videos.results.find((v) => v.site === 'YouTube' && v.type === 'Trailer')!.key}`
-      : null,
+    trailer_url: (() => {
+      const videos = movie.videos?.results?.filter((v) => v.site === 'YouTube') || [];
+      const trailer = videos.find((v) => v.type === 'Trailer')
+        || videos.find((v) => v.type === 'Teaser')
+        || videos[0];
+      return trailer ? `https://www.youtube.com/watch?v=${trailer.key}` : null;
+    })(),
     release_date: movie.release_date || '2024-01-01',
     duration: movie.runtime || 120,
     rating: Math.round((movie.vote_average / 2) * 10) / 10, // Convert 10-scale to 5-scale
