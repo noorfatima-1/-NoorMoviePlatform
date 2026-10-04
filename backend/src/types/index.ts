@@ -24,6 +24,7 @@ export interface User {
   email: string;
   username: string;
   avatar_url?: string;
+  role: 'user' | 'admin';
   created_at: string;
 }
 
@@ -61,6 +62,29 @@ export interface WatchParty {
   playback_time: number;
   is_playing: boolean;
   created_at: string;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: 'info' | 'success' | 'warning' | 'party_invite' | 'review' | 'system';
+  title: string;
+  message: string;
+  link?: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  plan: 'free' | 'premium' | 'family';
+  status: 'active' | 'canceled' | 'past_due' | 'trialing';
+  current_period_end?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ApiResponse<T = unknown> {

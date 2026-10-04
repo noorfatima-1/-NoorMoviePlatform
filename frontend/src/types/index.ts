@@ -18,6 +18,10 @@ export interface Movie {
   created_at: string;
   updated_at: string;
   reviews?: Review[];
+  similar?: Movie[];
+  tmdb_id?: number;
+  vote_count?: number;
+  popularity?: number;
 }
 
 export interface User {
@@ -25,6 +29,7 @@ export interface User {
   email: string;
   username: string;
   avatar_url?: string;
+  role: 'user' | 'admin';
 }
 
 export interface Review {
@@ -52,6 +57,25 @@ export interface AuthResponse {
     user: User;
     session: Session;
   };
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: 'info' | 'success' | 'warning' | 'party_invite' | 'review' | 'system';
+  title: string;
+  message: string;
+  link?: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  plan: 'free' | 'premium' | 'family';
+  status: 'active' | 'canceled' | 'past_due' | 'trialing';
+  current_period_end?: string;
 }
 
 export interface ApiResponse<T> {

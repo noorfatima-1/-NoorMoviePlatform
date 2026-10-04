@@ -11,6 +11,9 @@ import authRoutes from './routes/authRoutes';
 import movieRoutes from './routes/movieRoutes';
 import watchPartyRoutes from './routes/watchPartyRoutes';
 import tmdbRoutes from './routes/tmdbRoutes';
+import notificationRoutes from './routes/notificationRoutes';
+import subscriptionRoutes from './routes/subscriptionRoutes';
+import uploadRoutes from './routes/uploadRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -60,6 +63,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/movies', movieRoutes);
 app.use('/api/watch-party', watchPartyRoutes);
 app.use('/api/tmdb', tmdbRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

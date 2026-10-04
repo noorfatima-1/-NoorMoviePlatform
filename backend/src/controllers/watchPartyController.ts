@@ -140,3 +140,57 @@ export const getActiveParties = async (_req: AuthRequest, res: Response): Promis
     res.status(500).json({ success: false, error: 'Failed to fetch active parties' });
   }
 };
+
+// Chat messages
+export const sendMessage = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { partyId } = req.params;
+  const { message } = req.body;
+
+  if (!message?.trim()) {
+    res.status(400).json({ success: false, error: 'Message is required' });
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('watch_party_messages')
+      .insert({
+        party_id: partyId,
+        user_id: req.user!.id,
+        message: message.trim(),
+      })
+      .select('*, profiles(username, avatar_url)')
+      .single();
+
+    if (error) {
+      res.status(400).json({ success: false, error: error.message });
+      return;
+    }
+
+    res.status(201).json({ success: true, data });
+  } catch {
+    res.status(500).json({ success: false, error: 'Failed to send message' });
+  }
+};
+
+export const getMessages = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { partyId } = req.params;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('watch_party_messages')
+      .select('*, profiles(username, avatar_url)')
+      .eq('party_id', partyId)
+      .order('created_at', { ascending: true })
+      .limit(100);
+
+    if (error) {
+      res.status(400).json({ success: false, error: error.message });
+      return;
+    }
+
+    res.json({ success: true, data });
+  } catch {
+    res.status(500).json({ success: false, error: 'Failed to fetch messages' });
+  }
+};

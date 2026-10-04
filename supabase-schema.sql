@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   email TEXT NOT NULL,
   username TEXT UNIQUE NOT NULL,
   avatar_url TEXT,
+  role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -109,8 +110,17 @@ CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT 
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
--- Movies: everyone can read
+-- Movies: everyone can read, admins can manage
 CREATE POLICY "Movies are viewable by everyone" ON movies FOR SELECT USING (true);
+CREATE POLICY "Admins can insert movies" ON movies FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+CREATE POLICY "Admins can update movies" ON movies FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+CREATE POLICY "Admins can delete movies" ON movies FOR DELETE USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
 
 -- Watchlist: users manage their own
 CREATE POLICY "Users can view own watchlist" ON watchlist FOR SELECT USING (auth.uid() = user_id);
@@ -136,8 +146,65 @@ CREATE POLICY "Party members viewable" ON watch_party_members FOR SELECT USING (
 CREATE POLICY "Users can join parties" ON watch_party_members FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can leave parties" ON watch_party_members FOR DELETE USING (auth.uid() = user_id);
 
--- Enable Realtime for watch parties
+-- Notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('info', 'success', 'warning', 'party_invite', 'review', 'system')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  link TEXT,
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own notifications" ON notifications FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can update own notifications" ON notifications FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "System can insert notifications" ON notifications FOR INSERT WITH CHECK (true);
+
+-- Subscriptions (Stripe)
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE UNIQUE,
+  stripe_customer_id TEXT,
+  stripe_subscription_id TEXT,
+  plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'premium', 'family')),
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'canceled', 'past_due', 'trialing')),
+  current_period_end TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own subscription" ON subscriptions FOR SELECT USING (auth.uid() = user_id);
+
+-- Watch Party Messages (persistent chat)
+CREATE TABLE IF NOT EXISTS watch_party_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  party_id UUID NOT NULL REFERENCES watch_parties(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_party_messages ON watch_party_messages(party_id, created_at);
+
+ALTER TABLE watch_party_messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Party messages viewable" ON watch_party_messages FOR SELECT USING (true);
+CREATE POLICY "Users can send messages" ON watch_party_messages FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Full-text search index on movies
+CREATE INDEX IF NOT EXISTS idx_movies_fts ON movies USING GIN (
+  to_tsvector('english', title || ' ' || description || ' ' || director)
+);
+
+-- Enable Realtime for watch parties and messages
 ALTER PUBLICATION supabase_realtime ADD TABLE watch_parties;
+ALTER PUBLICATION supabase_realtime ADD TABLE watch_party_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 
 -- Seed some sample movies
 INSERT INTO movies (title, description, poster_url, backdrop_url, trailer_url, release_date, duration, rating, genre, director, cast_members, language, maturity_rating, is_featured) VALUES

@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, Bell, ChevronDown, Menu, X } from 'lucide-react';
+import { Search, ChevronDown, Menu, X } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import NotificationBell from '@/components/layout/NotificationBell';
 import { clsx } from 'clsx';
 
 export default function Navbar() {
@@ -106,9 +107,9 @@ export default function Navbar() {
 
             {isAuthenticated ? (
               <>
-                <button className="hidden sm:block text-gray-300 hover:text-white transition-colors">
-                  <Bell size={20} />
-                </button>
+                <div className="hidden sm:block">
+                  <NotificationBell />
+                </div>
 
                 {/* Profile Dropdown */}
                 <div className="relative">

@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useSound } from '@/hooks/useSound';
 import StarRating from '@/components/ui/StarRating';
 import MovieRow from '@/components/movie/MovieRow';
+import { SkeletonDetail } from '@/components/shared/SkeletonCard';
 import type { Movie } from '@/types';
 
 export default function MovieDetailPage() {
@@ -77,11 +78,7 @@ export default function MovieDetailPage() {
   };
 
   if (isLoading || !currentMovie) {
-    return (
-      <div className="min-h-screen bg-[#141414] flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <SkeletonDetail />;
   }
 
   const movie = currentMovie;

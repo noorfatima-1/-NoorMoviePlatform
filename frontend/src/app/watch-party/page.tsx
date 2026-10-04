@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
 import {
   ArrowLeft,
   Play,
@@ -13,6 +12,7 @@ import {
   Send,
   Volume2,
   VolumeX,
+  Wifi,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -20,13 +20,15 @@ import { useMovieStore } from '@/store/movieStore';
 import { api } from '@/lib/api';
 import type { Movie } from '@/types';
 
-const ReactPlayer = dynamic(() => import('react-player'), { ssr: false });
-
 interface ChatMessage {
   id: string;
-  username: string;
+  user_id: string;
   message: string;
-  timestamp: Date;
+  created_at: string;
+  profiles?: {
+    username: string;
+    avatar_url: string;
+  };
 }
 
 interface PartyData {
@@ -49,22 +51,21 @@ function WatchPartyContent() {
   const { user, isAuthenticated, loadUser } = useAuthStore();
   const { currentMovie, fetchMovieById } = useMovieStore();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const playerRef = useRef<any>(null);
+  const playerRef = useRef<HTMLIFrameElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
 
   const [party, setParty] = useState<PartyData | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
-  const [played, setPlayed] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [playedSeconds, setPlayedSeconds] = useState(0);
+  const [duration] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [members, setMembers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [connected, setConnected] = useState(false);
 
   const isHost = party?.host_id === user?.id;
 
@@ -111,12 +112,22 @@ function WatchPartyContent() {
     init();
   }, [isAuthenticated, user, movieId, joinCode, fetchMovieById]);
 
-  // Subscribe to realtime updates
+  // Load existing messages
+  useEffect(() => {
+    if (!party?.id) return;
+
+    api.get<{ success: boolean; data: ChatMessage[] }>(`/watch-party/${party.id}/messages`)
+      .then((res) => setChatMessages(res.data))
+      .catch(() => {});
+  }, [party?.id]);
+
+  // Subscribe to realtime: party state + chat messages
   useEffect(() => {
     if (!party?.id) return;
 
     const channel = supabase
       .channel(`party-${party.id}`)
+      // Party state updates (playback sync)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'watch_parties', filter: `id=eq.${party.id}` },
@@ -125,12 +136,29 @@ function WatchPartyContent() {
           if (!isHost) {
             setIsPlaying(updated.is_playing);
             if (Math.abs(updated.playback_time - playedSeconds) > 2) {
-              playerRef.current?.seekTo(updated.playback_time);
+              setPlayedSeconds(updated.playback_time);
             }
           }
         }
       )
-      .subscribe();
+      // New chat messages
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'watch_party_messages', filter: `party_id=eq.${party.id}` },
+        (payload) => {
+          const newMsg = payload.new as ChatMessage;
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          setTimeout(() => {
+            chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' });
+          }, 100);
+        }
+      )
+      .subscribe((status) => {
+        setConnected(status === 'SUBSCRIBED');
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -163,29 +191,31 @@ function WatchPartyContent() {
     }
   };
 
-  const sendChat = (e: React.FormEvent) => {
+  const sendChat = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || !user) return;
+    if (!chatInput.trim() || !user || !party?.id) return;
 
-    const msg: ChatMessage = {
-      id: Date.now().toString(),
-      username: user.username,
-      message: chatInput.trim(),
-      timestamp: new Date(),
-    };
-
-    setChatMessages((prev) => [...prev, msg]);
+    const message = chatInput.trim();
     setChatInput('');
 
-    setTimeout(() => {
-      chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' });
-    }, 100);
+    try {
+      await api.post(`/watch-party/${party.id}/messages`, { message });
+    } catch {
+      // Message will appear via realtime subscription
+    }
   };
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const getRelativeTime = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    if (diff < 60000) return 'now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
+    return `${Math.floor(diff / 3600000)}h`;
   };
 
   if (loading) {
@@ -209,10 +239,10 @@ function WatchPartyContent() {
     );
   }
 
-  const videoUrl =
-    currentMovie?.trailer_url ||
-    currentMovie?.video_url ||
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+  // Extract YouTube video ID for iframe embed
+  const videoUrl = currentMovie?.trailer_url || currentMovie?.video_url || '';
+  const ytMatch = videoUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+  const youtubeId = ytMatch ? ytMatch[1] : null;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] pt-16">
@@ -228,6 +258,12 @@ function WatchPartyContent() {
               <h1 className="text-white font-semibold">{currentMovie?.title || 'Watch Party'}</h1>
             </div>
             <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <Wifi size={14} className={connected ? 'text-green-500' : 'text-red-500'} />
+                <span className={`text-xs ${connected ? 'text-green-500' : 'text-red-500'}`}>
+                  {connected ? 'Connected' : 'Connecting...'}
+                </span>
+              </div>
               <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
                 <span className="text-gray-400 text-sm">Room:</span>
                 <span className="text-white font-mono font-bold">{party?.room_code}</span>
@@ -244,41 +280,30 @@ function WatchPartyContent() {
 
           {/* Video */}
           <div className="flex-1 relative bg-black">
-            <ReactPlayer
-              ref={(p) => { playerRef.current = p; }}
-              url={videoUrl}
-              playing={isPlaying}
-              muted={muted}
-              width="100%"
-              height="100%"
-              style={{ position: 'absolute', top: 0, left: 0 }}
-              onProgress={(s: any) => { setPlayed(s.played); setPlayedSeconds(s.playedSeconds); }}
-              onDuration={(d: number) => setDuration(d)}
-              config={{ file: { attributes: { crossOrigin: 'anonymous' } } } as any}
-            />
+            {youtubeId ? (
+              <iframe
+                ref={playerRef}
+                src={`https://www.youtube.com/embed/${youtubeId}?autoplay=${isPlaying ? 1 : 0}&mute=${muted ? 1 : 0}&enablejsapi=1`}
+                className="absolute inset-0 w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            ) : videoUrl ? (
+              <video
+                className="absolute inset-0 w-full h-full object-contain"
+                src={videoUrl}
+                muted={muted}
+                onTimeUpdate={(e) => setPlayedSeconds(e.currentTarget.currentTime)}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+                No video available
+              </div>
+            )}
           </div>
 
           {/* Player Controls */}
           <div className="bg-gray-900 p-3">
-            {/* Progress */}
-            <div
-              className="w-full h-1 bg-gray-700 rounded-full mb-3 cursor-pointer group"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const pct = (e.clientX - rect.left) / rect.width;
-                setPlayed(pct);
-                playerRef.current?.seekTo(pct);
-              }}
-            >
-              <div className="relative h-full">
-                <div className="absolute h-full bg-red-600 rounded-full" style={{ width: `${played * 100}%` }} />
-                <div
-                  className="absolute top-1/2 w-3 h-3 bg-red-600 rounded-full opacity-0 group-hover:opacity-100"
-                  style={{ left: `${played * 100}%`, transform: 'translate(-50%, -50%)' }}
-                />
-              </div>
-            </div>
-
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
@@ -327,22 +352,27 @@ function WatchPartyContent() {
                 No messages yet. Start chatting!
               </p>
             )}
-            {chatMessages.map((msg) => (
-              <div key={msg.id} className="flex gap-2">
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  {msg.username[0]?.toUpperCase()}
-                </div>
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-white text-sm font-medium">{msg.username}</span>
-                    <span className="text-gray-500 text-xs">
-                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+            {chatMessages.map((msg) => {
+              const username = msg.profiles?.username || 'User';
+              return (
+                <div key={msg.id} className="flex gap-2">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    {username[0]?.toUpperCase()}
                   </div>
-                  <p className="text-gray-300 text-sm">{msg.message}</p>
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className={`text-sm font-medium ${msg.user_id === user?.id ? 'text-red-400' : 'text-white'}`}>
+                        {username}
+                      </span>
+                      <span className="text-gray-500 text-xs">
+                        {getRelativeTime(msg.created_at)}
+                      </span>
+                    </div>
+                    <p className="text-gray-300 text-sm">{msg.message}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Chat Input */}

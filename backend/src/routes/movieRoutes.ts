@@ -11,8 +11,11 @@ import {
   addReview,
   updateWatchHistory,
   getWatchHistory,
+  createMovie,
+  updateMovie,
+  deleteMovie,
 } from '../controllers/movieController';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -30,5 +33,10 @@ router.delete('/user/watchlist/:movieId', authenticate, removeFromWatchlist);
 router.post('/user/review', authenticate, addReview);
 router.post('/user/history', authenticate, updateWatchHistory);
 router.get('/user/history', authenticate, getWatchHistory);
+
+// Admin routes
+router.post('/', authenticate, requireAdmin, createMovie);
+router.put('/:id', authenticate, requireAdmin, updateMovie);
+router.delete('/:id', authenticate, requireAdmin, deleteMovie);
 
 export default router;

@@ -28,10 +28,10 @@ export default function ProfilePage() {
   }
 
   const menuItems = [
-    { icon: User, label: 'Account', description: 'Manage your account settings' },
-    { icon: Heart, label: 'My List', description: 'Movies you\'ve saved to watch later' },
-    { icon: Clock, label: 'Watch History', description: 'Recently watched movies' },
-    { icon: Settings, label: 'Settings', description: 'App preferences and notifications' },
+    { icon: User, label: 'Account', description: 'Manage your account settings', href: '/profile/settings' },
+    { icon: Heart, label: 'My List', description: 'Movies you\'ve saved to watch later', href: '/profile/watchlist' },
+    { icon: Clock, label: 'Watch History', description: 'Recently watched movies', href: '/profile/history' },
+    { icon: Settings, label: 'Settings', description: 'App preferences and notifications', href: '/profile/settings' },
   ];
 
   return (
@@ -53,6 +53,7 @@ export default function ProfilePage() {
           {menuItems.map((item) => (
             <button
               key={item.label}
+              onClick={() => router.push(item.href)}
               className="flex items-center gap-4 bg-gray-800/50 border border-gray-700 rounded-lg p-6 hover:bg-gray-800 hover:border-gray-600 transition-all text-left group"
             >
               <div className="p-3 bg-gray-700/50 rounded-lg group-hover:bg-red-600/20 transition-colors">
